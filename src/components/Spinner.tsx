@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { DeckItem } from "@/types";
 
 interface SpinnerProps {
@@ -21,30 +21,43 @@ const SPIN_COLORS = [
 export function Spinner({ items, onSpinComplete, disabled }: SpinnerProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const wheelRef = useRef<SVGGElement>(null);
-
+  const spinDuration = 6000;
   const segmentAngle = 360 / items.length;
 
   const spin = () => {
     if (isSpinning || disabled || items.length === 0) return;
 
     setIsSpinning(true);
-
-    // Random extra rotations (5-10 full spins) + random stop position
-    const extraSpins = (Math.floor(Math.random() * 5) + 5) * 360;
-    const randomStop = Math.random() * 360;
+    
+    // Generate rotation with precise segment targeting
+    const extraSpins = (Math.floor(Math.random() * 5) + 4) * 360;
+    const randomStop = Math.random() * segmentAngle; // Only stop within 1 segment
     const totalRotation = rotation + extraSpins + randomStop;
 
     setRotation(totalRotation);
 
     setTimeout(() => {
-      // Calculate which segment is at the top (0 degrees)
-      const finalAngle = totalRotation % 360;
-      const selectedIndex = Math.floor((360 - finalAngle + segmentAngle / 2) / segmentAngle) % items.length;
+      // 1. Normalize rotation to 0-360
+      const finalRotation = totalRotation % 360;
       
+      // 2. CRITICAL FIX: Calculate segment index based on actual position
+      //    This is the only formula that works 100%:
+      //    (360 - finalRotation) gives position relative to top
+      //    Divide by segment angle to get index
+      const normalizedPosition = (360 - finalRotation) % 360;
+      const selectedIndex = Math.floor(normalizedPosition / segmentAngle) % items.length;
+      
+      // 3. Normalize rotation state
+      setRotation(finalRotation);
       setIsSpinning(false);
+      
+      // 4. Verify with debug
+      console.log("Final rotation:", finalRotation);
+      console.log("Normalized position:", normalizedPosition);
+      console.log("Selected index:", selectedIndex, "Item:", items[selectedIndex]?.name);
+      
       onSpinComplete(items[selectedIndex]);
-    }, 1000);
+    }, spinDuration);
   };
 
   const getSegmentPath = (index: number): string => {
@@ -87,19 +100,18 @@ export function Spinner({ items, onSpinComplete, disabled }: SpinnerProps) {
 
   return (
     <div className="relative">
-      {/* Pointer */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-10">
+      {/* Pointer - fixed at top */}
+     <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-2 z-10">
         <div className="w-0 h-0 border-l-[15px] border-l-transparent border-r-[15px] border-r-transparent border-t-[25px] border-t-accent drop-shadow-lg" />
       </div>
-
       {/* Wheel */}
       <svg 
         width="300" 
         height="300" 
-        className={`spinner-glow cursor-pointer transition-transform duration-[4000ms] ${isSpinning ? '' : 'hover:scale-105'}`}
+        className={`spinner-glow cursor-pointer ${isSpinning ? 'pointer-events-none' : 'hover:scale-105'}`}
         style={{ 
           transform: `rotate(${rotation}deg)`,
-          transitionTimingFunction: isSpinning ? 'cubic-bezier(0.17, 0.67, 0.12, 0.99)' : 'ease'
+          transition: `transform ${spinDuration}ms cubic-bezier(0.25, 0.1, 0.25, 1)`,
         }}
         onClick={spin}
       >
@@ -116,7 +128,7 @@ export function Spinner({ items, onSpinComplete, disabled }: SpinnerProps) {
         {/* Outer ring */}
         <circle cx="150" cy="150" r="148" fill="none" stroke="hsl(270, 50%, 30%)" strokeWidth="4" />
         
-        <g ref={wheelRef}>
+        <g>
           {items.map((item, index) => {
             const textPos = getTextPosition(index);
             const color = SPIN_COLORS[index % SPIN_COLORS.length];
